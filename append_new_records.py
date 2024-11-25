@@ -168,7 +168,6 @@ if __name__ == "__main__":
 
                     chart_count += 1
                     current_data_col += 3
-                    # break
 
                 
 
