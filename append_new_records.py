@@ -104,7 +104,6 @@ if __name__ == "__main__":
     master_df = pd.read_excel(MASTER_PATH, sheet_name="workout_data")
     new_data_df = pd.read_csv(NEW_DATA_PATH)
 
-    # print(pd.concat([master_df, new_data_df],ignore_index=True, axis=0))
     combined_data_df = new_data_df._append([master_df], ignore_index=True)
 
     prev_num_rows = master_df.shape[0]
@@ -114,12 +113,11 @@ if __name__ == "__main__":
 
     combined_data_df["start_time"] = combined_data_df["start_time"].apply(lambda time: time.split(",")[0])
     combined_data_df["weight_moved"] = combined_data_df["weight_kg"] * combined_data_df["reps"]
+    # combined_data_df["start_time"] = pd.to_datetime(combined_data_df["start_time"], format="%d %b %Y", dayfirst=True, yearfirst=False).dt.strftime("%")
     # Reverse order of df to make old data be first
     combined_data_df = combined_data_df[::-1]
 
     if choice.lower() == "y":
-        # combined_data_df.to_csv(MASTER_PATH, index=False)
-        # combined_data_df.to_excel(MASTER_PATH, "workout_data", index=False)
 
         current_data_col = 1
         with pd.ExcelWriter(MASTER_PATH, engine="openpyxl", mode="a", if_sheet_exists="replace") as writer:
@@ -139,8 +137,8 @@ if __name__ == "__main__":
                     chart = LineChart()
                     chart.smooth = False
                     chart.title = exercise
-                    chart.x_axis.title = "Date"
-                    chart.y_axis.title = "Weight Moved"
+                    chart.x_axis.delete = False
+                    chart.y_axis.delete = False
 
                     # Add the date and weight data to the data sheet
                     for i, (date, weight) in enumerate(zip(exercise_df["start_time"], exercise_df["weight_moved"]), start=1):
@@ -153,6 +151,7 @@ if __name__ == "__main__":
                     
                     # Add the data to the chart
                     chart.add_data(yvalues, titles_from_data=False)
+                    chart.set_categories(xvalues)
 
                     lobf = trendline.Trendline(dispEq=False, dispRSqr=False)
                     chart.series[0].trendline = lobf
