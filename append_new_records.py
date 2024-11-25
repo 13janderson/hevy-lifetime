@@ -3,7 +3,9 @@ import numpy as np
 import pickle 
 import os
 from itertools import combinations
-from openpyxl.chart import LineChart, ScatterChart, Reference, trendline
+from openpyxl.chart import LineChart, ScatterChart, Reference, trendline 
+from openpyxl.chart.shapes import GraphicalProperties
+
 import sys
 
 def determine_workout_splits(df):
@@ -12,86 +14,101 @@ def determine_workout_splits(df):
         choice = input("Found existing groups.\n Would you like to use these or continue to define your own? (y/n)")
         if choice == "y":
             with open('groups.pkl', 'rb') as f:
-                return pickle.load(f)
+                groups = pickle.load(f)
+    else:
+        # Otherwise determine the splits by co-occurence and ask the user where co-occurences lead to conflicting groups.
+        grouped = df.groupby("title")["exercise_title"].unique()
+        cooccurrence = {}
+        for exercises in grouped:
+            for pair in combinations(exercises, 2):
+                pair = tuple(sorted(pair))
+                cooccurrence[pair] = cooccurrence.get(pair, 0) + 1
+
+        # Step 3: Convert co-occurrence dict to DataFrame
+        cooccurrence_df = pd.DataFrame(
+            [(k[0], k[1], v) for k, v in cooccurrence.items()],
+            columns=["Exercise 1", "Exercise 2", "Co-occurrences"]
+        )
+
+        # Step 4: Apply co-occurrence threshold for grouping
+        cooccurrence_threshold = 4  
+        filtered_df = cooccurrence_df[cooccurrence_df["Co-occurrences"] >= cooccurrence_threshold]
+
+        # filtered_df = filtered_df.drop(["Co-occurrences"], axis=1)
+        print(filtered_df)
+        filtered_df = filtered_df.drop_duplicates()
+        print(filtered_df)
 
 
-    # Otherwise determine the splits by co-occurence and ask the user where co-occurences lead to conflicting groups.
-    grouped = df.groupby("title")["exercise_title"].unique()
-    cooccurrence = {}
-    for exercises in grouped:
-        for pair in combinations(exercises, 2):
-            pair = tuple(sorted(pair))
-            cooccurrence[pair] = cooccurrence.get(pair, 0) + 1
+        groups = {}
+        for ex1, ex2, _ in filtered_df.itertuples(index=False):
+            ex1_group = ""
+            ex2_group = ""
+            for group in groups.keys():
+                exercises = groups[group]
+                if ex1 in exercises:
+                    ex1_group = group
 
-    # Step 3: Convert co-occurrence dict to DataFrame
-    cooccurrence_df = pd.DataFrame(
-        [(k[0], k[1], v) for k, v in cooccurrence.items()],
-        columns=["Exercise 1", "Exercise 2", "Co-occurrences"]
-    )
+                if ex2 in exercises:
+                    ex2_group = group
 
-    # Step 4: Apply co-occurrence threshold for grouping
-    cooccurrence_threshold = 4  
-    filtered_df = cooccurrence_df[cooccurrence_df["Co-occurrences"] >= cooccurrence_threshold]
-
-    # filtered_df = filtered_df.drop(["Co-occurrences"], axis=1)
-    print(filtered_df)
-    filtered_df = filtered_df.drop_duplicates()
-    print(filtered_df)
+                if ex1_group != "" and ex2_group != "":
+                    break
 
 
-    groups = {}
-    for ex1, ex2, _ in filtered_df.itertuples(index=False):
-        ex1_group = ""
-        ex2_group = ""
-        for group in groups.keys():
-            exercises = groups[group]
-            if ex1 in exercises:
-                ex1_group = group
-
-            if ex2 in exercises:
-                ex2_group = group
-
-            if ex1_group != "" and ex2_group != "":
-                break
-
-
-        if ex1_group == ex2_group:
-            if ex1_group == "":
-                groups["group" + str(len(groups.keys()))] = set([ex1, ex2])
-            else:
-                # Do nothing, these two exercises are already in the same group
-                pass
-        elif ex1_group == "" and ex2_group != "":
-            # Add ex1 to the same group as ex2
-            groups[ex2_group].add(ex1)
-        elif ex2_group == "" and ex1_group != "":
-            # Add ex2 to the same group as ex1
-            groups[ex1_group].add(ex2)
-        elif ex2_group != ex1_group:
-            # Both exercises are in groups but the groups differ
-            print(f"{ex1} and {ex2} appear to be coupled but are already in different groups.")
-            set1 = "(" + ', '.join(groups[ex1_group])+")"
-            set2 = "(" + ', '.join(groups[ex2_group])+")"
-            # Merge groups, or move one exercise to another group
-            choice = int(input(f"""
-                    1. Move {ex1} to {set2}
-                    2. Move {ex2} to {set1}
-                    3. Merge the two sets
-                    4. Do nothing
-                    Choose an option: """))
-            if choice == 1:
+            if ex1_group == ex2_group:
+                if ex1_group == "":
+                    groups["group" + str(len(groups.keys()))] = set([ex1, ex2])
+                else:
+                    # Do nothing, these two exercises are already in the same group
+                    pass
+            elif ex1_group == "" and ex2_group != "":
+                # Add ex1 to the same group as ex2
                 groups[ex2_group].add(ex1)
-                groups[ex1_group].remove(ex1)
-            elif choice == 2:
+            elif ex2_group == "" and ex1_group != "":
+                # Add ex2 to the same group as ex1
                 groups[ex1_group].add(ex2)
-                groups[ex2_group].remove(ex2)
-            elif choice == 3:
-                merged_name = f"{ex1_group}_{ex2_group}_merged"
-                groups[merged_name] = groups[ex1_group].union(groups[ex2_group])
-                del groups[ex1_group]
-                del groups[ex2_group]
-                merged = "(" + ', '.join(groups[ex1_group])+")"
-                print(f"Merged: {merged}")
+            elif ex2_group != ex1_group:
+                # Both exercises are in groups but the groups differ
+                print(f"{ex1} and {ex2} appear to be coupled but are already in different groups.")
+                set1 = "(" + ', '.join(groups[ex1_group])+")"
+                set2 = "(" + ', '.join(groups[ex2_group])+")"
+                # Merge groups, or move one exercise to another group
+                choice = int(input(f"""
+                        1. Move {ex1} to {set2}
+                        2. Move {ex2} to {set1}
+                        3. Merge the two sets
+                        4. Do nothing
+                        Choose an option: """))
+                if choice == 1:
+                    groups[ex2_group].add(ex1)
+                    groups[ex1_group].remove(ex1)
+                elif choice == 2:
+                    groups[ex1_group].add(ex2)
+                    groups[ex2_group].remove(ex2)
+                elif choice == 3:
+                    merged_name = f"{ex1_group}_{ex2_group}_merged"
+                    groups[merged_name] = groups[ex1_group].union(groups[ex2_group])
+                    del groups[ex1_group]
+                    del groups[ex2_group]
+                    merged = "(" + ', '.join(groups[ex1_group])+")"
+                    print(f"Merged: {merged}")
+        print("Finished determining workout split.")
+
+    choice = input("Would you like to rename day(s) of this split? (y/n):")
+    to_delete = []
+    if choice == "y":
+        for g in range(len(groups.keys())):
+            group = list(groups.keys())[g]
+            print(groups[group])
+            alias = input("(HIT ENTER TO SKIP) New Alias for " + group + " :")
+            if alias != "":
+                groups[alias] = groups[group]
+                to_delete.append(group)
+
+        for group in to_delete:
+            del groups[group]
+                
     with open('groups.pkl', 'wb') as f:
         pickle.dump(groups,f)
 
@@ -113,7 +130,6 @@ if __name__ == "__main__":
 
     combined_data_df["start_time"] = combined_data_df["start_time"].apply(lambda time: time.split(",")[0])
     combined_data_df["weight_moved"] = combined_data_df["weight_kg"] * combined_data_df["reps"]
-    # combined_data_df["start_time"] = pd.to_datetime(combined_data_df["start_time"], format="%d %b %Y", dayfirst=True, yearfirst=False).dt.strftime("%")
     # Reverse order of df to make old data be first
     combined_data_df = combined_data_df[::-1]
 
@@ -154,6 +170,9 @@ if __name__ == "__main__":
                     chart.set_categories(xvalues)
 
                     lobf = trendline.Trendline(dispEq=False, dispRSqr=False)
+                    lobf.graphicalProperties = GraphicalProperties()
+                    lobf.graphicalProperties.line.solidFill = "ff4242"
+                    lobf.graphicalProperties.line.width= 30000
                     chart.series[0].trendline = lobf
                     chart.series[0].graphicalProperties.line.solidFill = "0000DD"  # Blue line color
                     chart.series[0].graphicalProperties.line.width = 15000 # Line width
